@@ -11,6 +11,8 @@ import (
 	// ....
 )
 
+var p = fmt.Println
+
 var task2Panics = func() { panic(""); p("DOING SOMETHING USEFUL EVERY 3 SECS ") }
 var task3 = func() { p("DOING SOMETHING ELSE USEFUL AS WELL EVERY 3 SECS ") }
 
@@ -38,3 +40,6 @@ func startScheduler() {
 
 
 ```
+
+# TODO
+Add persistence layer inorder to finish those tasks which could not have been finished due to server/program downtime.
