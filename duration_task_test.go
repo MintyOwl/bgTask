@@ -84,9 +84,7 @@ func TestStart(t *testing.T) {
 	go func() {
 		select {
 		case <-time.After(2 * time.Second):
-			//debugExit <- struct{}{}
-			//done2 <- struct{}{}
-			go func() { signals <- syscall.SIGINT }()
+			go func() { bg.signals <- syscall.SIGINT }()
 		}
 	}()
 	bg.Wait()

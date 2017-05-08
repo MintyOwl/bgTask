@@ -10,7 +10,7 @@ func TestRegisterDailyTask(t *testing.T) {
 	bg := NewBg()
 	defer bg.Wait()
 	bg.RegisterDailyTask("unik4", "14:46", func() { p("EVERYDAY TASK 2:46PM") })
-	signals <- syscall.SIGINT
+	bg.signals <- syscall.SIGINT
 	if len(bg.Errors) > 0 {
 		t.Fail()
 	}

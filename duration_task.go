@@ -13,9 +13,6 @@ var p = fmt.Println
 var pf = fmt.Printf
 var spf = fmt.Sprintf
 
-var signals = make(chan os.Signal)
-var debugExit = make(chan struct{})
-
 // Bg is a background scheduler to be configured
 type Bg struct {
 	durationTasks map[string]*job
@@ -27,6 +24,7 @@ type Bg struct {
 	done          chan struct{}
 	wg            *sync.WaitGroup
 	Errors        []error
+	signals       chan os.Signal
 }
 
 type job struct {
@@ -42,7 +40,7 @@ func NewBg(sT ...bool) *Bg {
 	if len(sT) > 0 {
 		show = true
 	}
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
 	bg := &Bg{
 		durationTasks: make(map[string]*job),
 		showTime:      show,
@@ -51,7 +49,10 @@ func NewBg(sT ...bool) *Bg {
 		dailyTasks:    make(map[string]*job),
 		location:      time.FixedZone("IST", 19800),
 		Errors:        make([]error, 0),
+		signals:       make(chan os.Signal),
 	}
+	signal.Notify(bg.signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
 	return bg
 }
 
@@ -63,7 +64,6 @@ func NewBgSync(sT ...bool) *Bg {
 	if len(sT) > 0 {
 		show = true
 	}
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	bg := &Bg{
 		durationTasks: make(map[string]*job),
 		showTime:      show,
@@ -72,7 +72,10 @@ func NewBgSync(sT ...bool) *Bg {
 		dailyTasks:    make(map[string]*job),
 		location:      time.FixedZone("IST", 19800),
 		Errors:        make([]error, 0),
+		signals:       make(chan os.Signal),
 	}
+	signal.Notify(bg.signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
 	return bg
 }
 
@@ -137,13 +140,7 @@ func (bg *Bg) startDurationTasks(key string) {
 	ticker := time.NewTicker(dur)
 	for {
 		select {
-		case <-debugExit:
-			if bg.wg == nil {
-				bg.done <- struct{}{}
-				return
-			}
-			bg.wg.Done()
-		case <-signals:
+		case <-bg.signals:
 			if bg.wg == nil {
 				bg.done <- struct{}{}
 				return

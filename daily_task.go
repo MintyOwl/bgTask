@@ -6,26 +6,27 @@ import (
 	"time"
 )
 
-var stdTimeDay = "15:04 2006-01-02"
-var stdDay = "2006-01-02"
-var api = "15:04"
+const (
+	bgTaskStdTimeDay = "15:04 2006-01-02"
+	bgTaskStdDay     = "2006-01-02"
+)
 
 func getCorrectDate(in string, loc *time.Location) (string, error) {
-	today := time.Now().Format(stdDay)
+	today := time.Now().Format(bgTaskStdDay)
 	today = in + " " + today
-	tIn, err := time.ParseInLocation(stdTimeDay, today, loc)
+	tIn, err := time.ParseInLocation(bgTaskStdTimeDay, today, loc)
 	if err != nil {
 		return "", err
 	}
 	now := time.Now().In(loc)
 	if tIn.Sub(now) > 0 {
-		today = time.Now().Format(stdDay)
+		today = time.Now().Format(bgTaskStdDay)
 		correctDate := in + " " + today
 		// write correctDate to file for persistense
 		return correctDate, nil
 	}
 	tom := now.Add(24 * time.Hour)
-	tomS := tom.Format(stdDay)
+	tomS := tom.Format(bgTaskStdDay)
 	correctDate := in + " " + tomS
 	return correctDate, nil
 }
@@ -39,7 +40,7 @@ func (bg *Bg) RegisterDailyTask(key, relativeTime string, fn func()) {
 	if err != nil {
 		bg.Errors = append(bg.Errors, err)
 	}
-	t1, err := time.ParseInLocation(stdTimeDay, CorrectDate, bg.location)
+	t1, err := time.ParseInLocation(bgTaskStdTimeDay, CorrectDate, bg.location)
 	if err != nil {
 		bg.Errors = append(bg.Errors, err)
 	}
@@ -72,13 +73,7 @@ func (bg *Bg) startDailyTask(key string, dur time.Duration) {
 	go func() {
 		for {
 			select {
-			case <-debugExit:
-				if bg.wg == nil {
-					bg.done <- struct{}{}
-					return
-				}
-				bg.wg.Done()
-			case <-signals:
+			case <-bg.signals:
 				if bg.wg == nil {
 					bg.done <- struct{}{}
 					return
