@@ -35,6 +35,7 @@ func startScheduler() {
 	bg.RegisterTask("unikey2", "3s", jobIsPanicking)
 	bg.RegisterTask("unikey3", "3s", job3)
 	bg.RegisterDailyTask("unikey4", "14:46", func() { p("RUNNING THIS TASK AT 2:46PM EVERYDAY") })
+	//bg.Errors
 }
 
 

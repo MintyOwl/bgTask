@@ -1,7 +1,6 @@
 package bgTask
 
 import (
-	"fmt"
 	"os"
 	"time"
 )
@@ -45,7 +44,7 @@ func (bg *Bg) RegisterDailyTask(key, relativeTime string, fn func()) {
 		bg.Errors = append(bg.Errors, err)
 	}
 	bg.dailyTasks[key] = &job{fn: fn}
-	dur, err := time.ParseDuration(fmt.Sprintf("%v", t1.Sub(time.Now())))
+	dur, err := time.ParseDuration(spf("%v", t1.Sub(time.Now())))
 	if err != nil {
 		bg.Errors = append(bg.Errors, err)
 	}
