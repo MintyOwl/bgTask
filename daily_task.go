@@ -1,17 +1,22 @@
 package bgTask
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 )
 
 const (
 	bgTaskStdTimeDay = "15:04 2006-01-02"
 	bgTaskStdDay     = "2006-01-02"
+	storeFile        = "bgTasks_.json"
 )
 
 func getCorrectDate(in string, loc *time.Location) (string, error) {
-	today := time.Now().Format(bgTaskStdDay)
+	today := time.Now().In(loc).Format(bgTaskStdDay)
 	today = in + " " + today
 	tIn, err := time.ParseInLocation(bgTaskStdTimeDay, today, loc)
 	if err != nil {
@@ -21,7 +26,6 @@ func getCorrectDate(in string, loc *time.Location) (string, error) {
 	if tIn.Sub(now) > 0 {
 		today = time.Now().Format(bgTaskStdDay)
 		correctDate := in + " " + today
-		// write correctDate to file for persistense
 		return correctDate, nil
 	}
 	tom := now.Add(24 * time.Hour)
@@ -30,78 +34,183 @@ func getCorrectDate(in string, loc *time.Location) (string, error) {
 	return correctDate, nil
 }
 
-// RegisterDailyTask is used for tasks that are run only once a day.
-// It accepts the unique key as the first param, a time in the format of "13:45", meaning
-// at 1:45 PM everyday, 'fn' callback function will be called
-// bg.RegisterDailyTask("uniqueKey123", "13:45", func() { fmt.Println("CALL BACK at 1:45PM everyday") })
-func (bg *Bg) RegisterDailyTask(key, relativeTime string, fn func()) {
-	CorrectDate, err := getCorrectDate(relativeTime, bg.location)
-	if err != nil {
-		bg.Errors = append(bg.Errors, err)
-	}
-	t1, err := time.ParseInLocation(bgTaskStdTimeDay, CorrectDate, bg.location)
-	if err != nil {
-		bg.Errors = append(bg.Errors, err)
-	}
-	bg.dailyTasks[key] = &job{fn: fn}
-	dur, err := time.ParseDuration(spf("%v", t1.Sub(time.Now())))
-	if err != nil {
-		bg.Errors = append(bg.Errors, err)
-	}
-	if len(bg.Errors) > 0 {
-		p(bg.Errors)
-		os.Exit(2)
-	}
-	if bg.wg == nil {
-		go bg.startDailyTask(key, dur)
-		return
-	}
-	bg.wg.Add(1)
-	go bg.startDailyTask(key, dur)
+// SetDevel must not be called on production
+func (bg *Bg) SetDevel() *Bg {
+	bg.devel = true
+	return bg
 }
 
-func (bg *Bg) startDailyTask(key string, dur time.Duration) {
-	dur1 := dur
-	job := bg.dailyTasks[key]
-	if bg.log != nil {
-		bg.log(spf("Task for %v will start after %v\n", key, dur))
-	} else {
-		pf("\nTask for %v will start after %v\n", key, dur)
+// Persistence accepts directory where the scheduler will put all pending daily tasks in a file named bgTask_.json
+// By default the scheduler will use operating system specific temp directory if possible
+// Persistence is only meant to be used with daily tasks
+func (bg *Bg) Persistence(directory ...string) *Bg {
+	var dir = ""
+	if len(directory) > 0 {
+		dir = directory[0]
+	}
+	var absDir, absDirWithFile string
+	var subDir = "bgTasks"
+	var err error
+	dir = filepath.Join(dir, subDir)
+	absDir, err = filepath.Abs(dir)
+	if err != nil {
+		bg.Errors = append(bg.Errors, err)
+	}
+	err = os.MkdirAll(absDir, 0644)
+	absDirWithFile = filepath.Join(absDir, storeFile)
+	f, err := os.OpenFile(absDirWithFile, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		bg.Errors = append(bg.Errors, err)
+		f.Close()
+	}
+	defer f.Close()
+	bg.storage = absDirWithFile
+	return bg
+}
+
+func (bg *Bg) GetDailyTaskByKey(key string) *Task {
+	task, ok := bg.dailyTasks[key]
+	if !ok {
+		return nil
+	}
+	return task
+}
+
+// registerDailyTask is used for tasks that are run only once a day.
+func (bg *Bg) registerDailyTask(task *Task) {
+	key := task.Key
+	var err error
+	for _, pTask := range bg.pTasks {
+		if pTask.Key == task.Key {
+			if bg.thisIsInPast(pTask.CorrectedTime) {
+				newTask := task
+				newTask.Key = key + "_repeated_" + strconv.Itoa(int(time.Now().Unix()))
+				go bg.startDailyTask(newTask.Key, 500*time.Millisecond, newTask)
+				<-time.After(1 * time.Second)
+				bg.removeTaskByDate(pTask.CorrectedTime)
+			}
+
+		}
 	}
 
+	correctDate, err := getCorrectDate(task.RelativeTime, bg.location)
+	if err != nil {
+		bg.Errors = append(bg.Errors, err)
+	}
+	t1, err := time.ParseInLocation(bgTaskStdTimeDay, correctDate, bg.location)
+	if err != nil {
+		bg.Errors = append(bg.Errors, err)
+	}
+
+	bg.pTasks = append(bg.pTasks, pendingTask{Key: key, CorrectedTime: correctDate})
+	task.dailyCancel = make(chan bool)
+	bg.dailyTasks[key] = task
+	if bg.devel {
+		task.dur = 50 * time.Millisecond
+	} else {
+		task.dur, err = time.ParseDuration(spf("%v", t1.Sub(time.Now())))
+	}
+
+	if err != nil {
+		bg.Errors = append(bg.Errors, err)
+	}
+}
+
+// RegisterDailyTasks is used for tasks that are run only once a day.
+func (bg *Bg) RegisterDailyTasks(tasks []*Task) {
+	var pendingTasks []pendingTask
+	if bg.storage != "" {
+		b, _ := ioutil.ReadFile(bg.storage)
+		json.Unmarshal(b, &pendingTasks)
+	}
+	if len(pendingTasks) > 0 {
+		bg.pTasks = pendingTasks
+	}
+	for _, task := range tasks {
+		bg.registerDailyTask(task)
+	}
+	bg.flushPTask()
+}
+
+// CancelDailyTask will remove task by the 'key' along with the key. To add again use RegisterTask
+func (bg *Bg) CancelDailyTask(key string) {
+	defer catchPanic(bg)
+	bg.dailyTasks[key].dailyCancel <- true
+
+}
+
+func (bg *Bg) removeTaskByDate(correctedDate string) {
+	var newpTasks = bg.pTasks
+	for _, pTask := range newpTasks {
+		bg.pTasks = make([]pendingTask, 0)
+		if pTask.CorrectedTime != correctedDate && !bg.thisIsInPast(correctedDate) {
+			bg.pTasks = append(bg.pTasks, pTask)
+		}
+	}
+	bg.flushPTask()
+}
+
+// removeTask must remove the task by the 'key' from storage. Personally, I think this should be synchronous operation. Hence everytime, we remove a single task, its going to block the storage writer
+func (bg *Bg) removeTask(key string) error {
+	var newpTasks = bg.pTasks
+	bg.pTasks = make([]pendingTask, 0)
+	for _, pTask := range newpTasks {
+		if pTask.Key != key {
+			bg.pTasks = append(bg.pTasks, pTask)
+		}
+	}
+	bg.flushPTask()
+	return nil
+}
+
+func (bg *Bg) startDailyTask(key string, dur time.Duration, taskToBeRunImmediately ...*Task) {
+	var task *Task
+	if len(taskToBeRunImmediately) > 0 {
+		task = taskToBeRunImmediately[0]
+	} else {
+		task = bg.dailyTasks[key]
+	}
+
+	bg.handleDisplay(spf("Task for %v will start after %v\n", key, dur))
 	go func() {
 		for {
 			select {
+			case <-task.dailyCancel:
+				if bg.storage != "" {
+					bg.removeTask(key)
+				}
+
+				delete(bg.dailyTasks, key)
+				return
 			case <-bg.signals:
 				if bg.wg == nil {
 					bg.done <- struct{}{}
 					return
 				}
 				bg.wg.Done()
-			case t := <-time.After(dur1):
+			case <-time.After(task.dur):
+				if bg.devel {
+					task.dur = 5 * time.Second
+					p("startDailyTask 5 Sec instead of 24Hours")
+				} else {
+					task.dur = 24 * time.Hour
+
+				}
+
 				go func() {
 					defer func() {
-
 						if err := recover(); err != nil {
-							if bg.log != nil {
-								bg.log(spf("%v %v\n", key, bg.errMsg))
-							} else {
-								pf("%v %v\n", key, bg.errMsg)
-							}
+							bg.handleDisplay((spf("%v %v\n", key, bg.errMsg)))
 						}
 					}()
-					if bg.showTime {
-						p(t)
+
+					task.TaskFn()
+					if bg.storage != "" && len(taskToBeRunImmediately) == 0 {
+						bg.removeTask(key)
 					}
 
-					dur1 = 24 * time.Hour
-					job.fn()
-					// remove from persistence
 				}()
 			}
 		}
-
 	}()
-	//<-done
-
 }
