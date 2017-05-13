@@ -26,6 +26,8 @@ Simple and persistent task scheduler
 ```
 package main
 
+package main
+
 import (
 	"bytes"
 	"fmt"
@@ -62,16 +64,16 @@ var bgTask1 = &bgTask.Task{Key: "unikey1", Duration: "1s", TaskFn: task1}
 var bgTask2 = &bgTask.Task{Key: "unikey2", Duration: "3s", TaskFn: taskIsPanicking}
 var bgTask3 = &bgTask.Task{Key: "unikey3", Duration: "3s", TaskFn: task3}
 
-var dailyTask1 = func() { p("RUNNING unik4 TASK AT 5 17 PM EVERYDAY") }
+var dailyTask1 = func() { p("RUNNING unik4 TASK AT 1 16 PM EVERYDAY") }
 var bgDailyTask1 = &bgTask.Task{Key: "unikey4", RelativeTime: "13:16", TaskFn: dailyTask1}
 
 var dailyTask2 = func() {
-	p("RUNNING unik5 TASK AT 9 21  PM EVERYDAY")
+	p("RUNNING unik5 TASK AT 7 46  PM EVERYDAY")
 }
 var bgDailyTask2 = &bgTask.Task{Key: "unikey5", RelativeTime: "19:46", TaskFn: dailyTask2}
 
 func startScheduler() {
-	bg := bgTask.NewBg()
+	bg := bgTask.NewBg().SetLocation(time.FixedZone("GMT", 0))
 	defer func() { p(buf.String()); bg.Wait() }()
 	bg.SetLogger(goLogger).SetErrMsg(" HAS PANICED")
 
@@ -110,6 +112,7 @@ func startScheduler() {
 func main() {
 	startScheduler()
 }
+
 
 
 ```
