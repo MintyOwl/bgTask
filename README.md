@@ -2,6 +2,27 @@
 Simple and persistent task scheduler
 
 # Usage
+
+```
+	bg := bgTask.NewBg()
+	// block the goroutine for ever
+	defer  bg.Wait()
+
+	// prepare and register heartbeat tasks
+	var allBgTasks []*bgTask.Task
+	allBgTasks = append(allBgTasks, sometask, othertask)
+	bg.RegisterTasks(allBgTasks)
+
+	// prepare and register daily tasks
+	var dailyTasks []*bgTask.Task
+	dailyTasks = append(dailyTasks, somedailytask, someotherdailytask)
+	bg.RegisterDailyTasks(dailyTasks)
+
+	// After successful registrations call Start()
+	bg.Start()
+```
+
+# Full Example
 ```
 package main
 
@@ -66,10 +87,24 @@ func startScheduler() {
 
 	// After registering both heartbeats and daily tasks, call Start
 	bg.Start()
-	<-time.After(100 * time.Millisecond)
-	bg.GetDailyTaskByKey("unikey5")
-	//bg.CancelTask("unikey3")
-	//bg.CancelDailyTask("unikey5")
+
+	go func() {
+		select {
+		case <-time.After(10 * time.Millisecond):
+			p("Get Task By Key")
+			p(bg.GetDailyTaskByKey("unikey5"))
+
+		}
+	}()
+	go func() {
+		select {
+		case <-time.After(100 * time.Millisecond):
+			bg.CancelDailyTask("unikey5")
+			//bg.CancelTask("unikey3")
+			<-time.After(100 * time.Millisecond) // wait until go's internal scheduler finishes
+			p(bg.GetDailyTaskByKey("unikey5"))
+		}
+	}()
 }
 
 func main() {
