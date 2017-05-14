@@ -3,10 +3,10 @@ package bgTask
 import (
 	"encoding/json"
 	"io/ioutil"
-	"reflect"
 	"time"
 )
 
+// StringifyErrors will stringify all bg.Errors delimited by new line
 func (bg *Bg) StringifyErrors() string {
 	var allErrs string
 	for _, err := range bg.Errors {
@@ -15,17 +15,18 @@ func (bg *Bg) StringifyErrors() string {
 	return allErrs
 }
 
-func catchPanic(bg *Bg, args ...interface{}) {
+func catchPanic(bg *Bg, args ...string) {
 	if err := recover(); err != nil {
 		bgPanicMsg := spf("\nbgTask has panicked\n")
-		val := reflect.ValueOf(bg).Elem()
-		errs := val.FieldByName("Errors")
-		e := spf("%s", errs)
+		var e string
+		if len(args) > 0 {
+			e = args[0]
+		}
 		otherErrs := bg.StringifyErrors()
 		panicErr := spf("PANIC ERROR > %v ", err)
 		bgPanicMsg += e + panicErr + otherErrs
 		if bg.log != nil {
-			bg.log(bgPanicMsg)
+			bg.log.Err(bgPanicMsg)
 		} else {
 			p(bgPanicMsg)
 		}
@@ -56,6 +57,17 @@ func (bg *Bg) thisIsInPast(correctedDate string) bool {
 		return true
 	}
 	return false
+}
+
+func (bg *Bg) handleDisplay(val string, infoType bool) {
+	if bg.log != nil && infoType {
+		bg.log.Info(val)
+	} else if infoType == false {
+		bg.log.Err(val)
+		return
+	} else {
+		pt(val)
+	}
 }
 
 // if the 'in' in the format "15:04" time has already passed, update it the value with tomorrow's timestamp.
@@ -99,4 +111,9 @@ func (bg *Bg) deDup() []pendingTask {
 		}
 	}
 	return newpTasks
+}
+
+// GetStorage gives you storage location for pending tasks
+func (bg *Bg) GetStorage() string {
+	return bg.storage
 }

@@ -20,12 +20,9 @@ func (bg *Bg) SetLocation(loc *time.Location) *Bg {
 	return bg
 }
 
-// SetLogger allows client to add optional logging facility in case the Task handler panics. It will call client's logginf function during panics instead of just printing on terminal
-// Eg: bg.SetLogger(myLogger)
-// func myLogger(val string) error {fmt.Printf("\n LOGGING > %v \n", val); return nil}
-// myLogger should always return nil
-func (bg *Bg) SetLogger(logfn func(string) error) *Bg {
-	bg.log = logfn
+// SetLogger allows client to add optional logging facility in case the Task handler panics/errors or to log other information.
+func (bg *Bg) SetLogger(loggr *Logger) *Bg {
+	bg.log = loggr
 	return bg
 }
 
@@ -36,8 +33,6 @@ func (bg *Bg) SetErrMsg(msg string) *Bg {
 	return bg
 }
 
-// registerTask adds Task handler, that will be called for 'duration' provided.
-// Eg: bg.registerTask("unique_key123", "5s", somefunc). Here, somefunc is reference to client's Task handler function that will get called every 5 seconds and is registered with a unique identifier KEY as the first argument.
 func (bg *Bg) registerTask(task *Task) {
 	key := task.Key
 	_, err := time.ParseDuration(task.Duration)
@@ -48,8 +43,7 @@ func (bg *Bg) registerTask(task *Task) {
 	bg.heartBeatTasks[key] = task
 }
 
-// RegisterTasks adds multiple Tasks all at once.
-// Eg: TODO
+// RegisterTasks allows to add Tasks.
 func (bg *Bg) RegisterTasks(tasks []*Task) {
 	for _, task := range tasks {
 		bg.registerTask(task)
@@ -62,7 +56,7 @@ func (bg *Bg) Start() error {
 	if len(bg.Errors) > 0 {
 		var allErr string
 		for _, v := range bg.Errors {
-			allErr += spt(v) + "\n"
+			allErr += v.Error() + "\n"
 		}
 		return errors.New(allErr)
 	}
@@ -90,19 +84,20 @@ func (bg *Bg) Start() error {
 	return nil
 }
 
-// CancelTask will remove task by the 'key' along with the key. To add again please use registerTask api
+// GetTaskByKey will get you hearbeat Task by the unique key provided during registration
+func (bg *Bg) GetTaskByKey(key string) *Task {
+	task, ok := bg.heartBeatTasks[key]
+	if !ok {
+		return nil
+	}
+	return task
+}
+
+// CancelTask will remove task by the 'key' along with the key.
 func (bg *Bg) CancelTask(key string) {
 	defer catchPanic(bg)
 	bg.heartBeatTasks[key].hbCancel <- true
 	delete(bg.heartBeatTasks, key)
-}
-
-func (bg *Bg) handleDisplay(val string) {
-	if bg.log != nil {
-		bg.log(val)
-	} else {
-		pt(val)
-	}
 }
 
 func (bg *Bg) startHeartBeatTasks(key string) {
@@ -122,13 +117,11 @@ func (bg *Bg) startHeartBeatTasks(key string) {
 
 		case <-ticker.C:
 			go func() {
-				defer func() {
-					if err := recover(); err != nil {
-						bg.handleDisplay(spf("%v %v\n", key, bg.errMsg))
-					}
-				}()
-
-				task.TaskFn()
+				defer catchPanic(bg, spf("%v %v\n", key, bg.errMsg))
+				err := task.TaskFn()
+				if err != nil {
+					bg.handleDisplay(err.Error(), false)
+				}
 			}()
 		}
 	}

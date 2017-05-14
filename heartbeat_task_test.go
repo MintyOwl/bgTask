@@ -8,22 +8,38 @@ import (
 )
 
 func TestSetLogger(t *testing.T) {
+	logger := &Logger{
+		Info: func(val string) error { return nil },
+		Err:  func(val string) error { return nil },
+	}
 	bg := NewBg()
-	bg.SetLogger(func(val string) error { return nil })
+	bg.SetLogger(logger)
 	if bg.log == nil {
 		t.Fail()
 	}
 }
 
+func TestRegisterBadTask(t *testing.T) {
+	bg := NewBg()
+
+	var tasks []*Task
+	task1 := &Task{Key: "unik1", Duration: "1", TaskFn: func() error { return nil }}
+	tasks = append(tasks, task1)
+	bg.RegisterTasks(tasks)
+	if bg.Start() == nil {
+		t.Fail()
+	}
+
+}
 func TestRegisterTask(t *testing.T) {
 	bg := NewBg()
 
 	var tasks []*Task
-	task1 := &Task{Key: "unik1", Duration: "1s", TaskFn: func() {}}
+	task1 := &Task{Key: "unik1", Duration: "1s", TaskFn: func() error { return nil }}
 	tasks = append(tasks, task1)
 	bg.RegisterTasks(tasks)
 	bg.Start()
-	if bg.heartBeatTasks["unik1"] == nil {
+	if bg.GetTaskByKey("unik1") == nil {
 		t.Fail()
 	}
 	bg.CancelTask("unik1")
@@ -51,7 +67,7 @@ func TestBg(t *testing.T) {
 
 func setup(bg *Bg, t *testing.T) {
 	var tasks []*Task
-	task1 := &Task{Key: "unik1", Duration: "1s", TaskFn: func() { myHandler() }}
+	task1 := &Task{Key: "unik1", Duration: "1s", TaskFn: func() error { myHandler(); return nil }}
 	tasks = append(tasks, task1)
 	bg.RegisterTasks(tasks)
 
@@ -72,7 +88,6 @@ func setup(bg *Bg, t *testing.T) {
 	}
 
 	output.buf.Reset()
-	logOutput.buf.Reset()
 	if bg.wg == nil {
 		p("Heartbeat Test")
 	} else {

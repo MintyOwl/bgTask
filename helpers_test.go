@@ -25,7 +25,6 @@ func TestThisIsInPast(t *testing.T) {
 
 func TestCorrectDate(t *testing.T) {
 	now := time.Now()
-	//nowInFormat := now.Format(bgTaskStdTimeDay)
 	In := now.Add(-1 * time.Hour)
 	InToBeTested := In.Format(bgStaticTime)
 	InWrong := In.Format(bgTaskStdTimeDay)
@@ -43,7 +42,6 @@ func TestCorrectDate(t *testing.T) {
 	In = now.Add(1 * time.Hour)
 	InToBeTested = In.Format(bgStaticTime)
 	InExpected = In.Format(bgTaskStdTimeDay)
-	//bg := NewBg()
 	got = bg.getCorrectDate(InToBeTested)
 	if got != InExpected {
 		t.Fail()
@@ -64,9 +62,13 @@ func TestWrongDates(t *testing.T) {
 
 func TestCatchPanic(t *testing.T) {
 	var panicVar string
-	bg := NewBg().SetLogger(func(val string) error { panicVar = val; return nil })
+	logger := &Logger{
+		Info: func(val string) error { panicVar = val; return nil },
+		Err:  func(val string) error { panicVar = val; return nil },
+	}
+	bg := NewBg().SetLogger(logger)
 	var dailyTasks []*Task
-	task1 := &Task{Key: "unik4", RelativeTime: "04:46", TaskFn: func() { p("EVERYDAY TASK 2:46AM") }}
+	task1 := &Task{Key: "unik4", RelativeTime: "04:46", TaskFn: func() error { p("EVERYDAY TASK 2:46AM"); return nil }}
 	dailyTasks = append(dailyTasks, task1)
 	bg.RegisterDailyTasks(dailyTasks)
 	bg.Start()
@@ -92,9 +94,4 @@ func TestCatchPanic(t *testing.T) {
 	if !strings.Contains(panicVar, "bgTask has panicked") {
 		t.Fail()
 	}
-}
-
-func TestMisc(t *testing.T) {
-	//	bg := NewBg().SetDevel()
-
 }

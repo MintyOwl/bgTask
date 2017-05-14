@@ -10,31 +10,35 @@ import (
 	"time"
 )
 
-var logOutput logger
+var logOutput bugLogger
 
-type logger struct {
-	buf *bytes.Buffer
+type bugLogger struct {
+	info *bytes.Buffer
 }
 
 func loggerSetup() {
 	buffer := bytes.NewBufferString("")
-	logOutput = logger{buf: buffer}
+	logOutput = bugLogger{info: buffer}
 }
 func myLogger(val string) error {
-	logOutput.buf.WriteString(val)
+	logOutput.info.WriteString(val)
 	return nil
 }
+
 func TestRegisterDailyTask(t *testing.T) {
 	loggerSetup()
-	bg := NewBg().SetLogger(myLogger).SetDevel()
+	loggr := &Logger{
+		Info: myLogger,
+	}
+	bg := NewBg().SetLogger(loggr).SetDevel()
 	defer bg.Wait()
 	var dailyTasks []*Task
-	task1 := &Task{Key: "unik4", RelativeTime: "04:46", TaskFn: func() { p("This is unik4 task being run as SetDevel is true") }}
+	task1 := &Task{Key: "unik4", RelativeTime: "04:46", TaskFn: func() error { p("This is unik4 task being run as SetDevel is true"); return nil }}
 	dailyTasks = append(dailyTasks, task1)
 	bg.RegisterDailyTasks(dailyTasks)
 	bg.Start()
 	<-time.After(50 * time.Millisecond)
-	if !strings.Contains(logOutput.buf.String(), "will start after") {
+	if !strings.Contains(logOutput.info.String(), "will start after") {
 		t.Fail()
 	}
 	if bg.dailyTasks["unik4"] == nil {
@@ -53,6 +57,17 @@ func TestRegisterDailyTask(t *testing.T) {
 	if bg.location.String() != "GMT" {
 		t.Fail()
 	}
+	loggr = &Logger{
+		Info: myLogger,
+	}
+	bg = NewBg().SetLogger(loggr)
+	task44 := &Task{Key: "unik44", RelativeTime: "26:12", TaskFn: func() error { p("This is unik44 task being run"); return nil }}
+	dailyTasks = append(dailyTasks, task44)
+	bg.RegisterDailyTasks(dailyTasks)
+
+	if bg.Start() == nil {
+		t.Fail()
+	}
 }
 
 func TestPersistence(t *testing.T) {
@@ -62,13 +77,15 @@ func TestPersistence(t *testing.T) {
 
 	dir := filepath.Join("testStore", "bgTasks")
 	fullPath := filepath.Join(dir, storeFile)
-	_, err := os.Open(fullPath)
+	f, err := os.Open(fullPath)
 	if err != nil {
+		f.Close()
 		t.Fail()
 	}
 
-	var dailyTask2 = func() {
+	var dailyTask2 = func() error {
 		p("RUNNING TASK unikey5")
+		return nil
 	}
 	var bgDailyTask = &Task{Key: "unikey5", RelativeTime: "19:21", TaskFn: dailyTask2}
 	var dailyTasks []*Task

@@ -15,7 +15,7 @@ type Bg struct {
 	location       *time.Location
 	devel          bool
 	errMsg         string
-	log            func(string) error
+	log            *Logger
 	done           chan struct{}
 	wg             *sync.WaitGroup
 	Errors         []error
@@ -24,6 +24,11 @@ type Bg struct {
 	storage        string
 	pTasks         []pendingTask
 	mu             *sync.RWMutex
+}
+
+type Logger struct {
+	Info func(string) error
+	Err  func(string) error
 }
 
 type pendingTask struct {
@@ -36,7 +41,7 @@ type pendingTask struct {
 // TaskFn is the callback function when triggered appropriately
 type Task struct {
 	Key, Duration, RelativeTime string
-	TaskFn                      func()
+	TaskFn                      func() error
 	dur                         time.Duration // dur is for daily task only
 	hbCancel                    chan bool
 	dailyCancel                 chan bool

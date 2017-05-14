@@ -68,6 +68,7 @@ func (bg *Bg) Persistence(directory ...string) *Bg {
 	return bg
 }
 
+// GetDailyTaskByKey will get you daily Task by the unique key provided during registration
 func (bg *Bg) GetDailyTaskByKey(key string) *Task {
 	task, ok := bg.dailyTasks[key]
 	if !ok {
@@ -120,7 +121,9 @@ func (bg *Bg) registerDailyTask(task *Task) {
 func (bg *Bg) RegisterDailyTasks(tasks []*Task) {
 	var pendingTasks []pendingTask
 	if bg.storage != "" {
+		bg.mu.RLock()
 		b, _ := ioutil.ReadFile(bg.storage)
+		bg.mu.RUnlock()
 		json.Unmarshal(b, &pendingTasks)
 	}
 	if len(pendingTasks) > 0 {
@@ -171,7 +174,7 @@ func (bg *Bg) startDailyTask(key string, dur time.Duration, taskToBeRunImmediate
 		task = bg.dailyTasks[key]
 	}
 
-	bg.handleDisplay(spf("Task for %v will start after %v\n", key, dur))
+	bg.handleDisplay(spf("Task for %v will start after %v\n", key, dur), true)
 	go func() {
 		for {
 			select {
@@ -198,13 +201,11 @@ func (bg *Bg) startDailyTask(key string, dur time.Duration, taskToBeRunImmediate
 				}
 
 				go func() {
-					defer func() {
-						if err := recover(); err != nil {
-							bg.handleDisplay((spf("%v %v\n", key, bg.errMsg)))
-						}
-					}()
-
-					task.TaskFn()
+					defer catchPanic(bg, spf("%v %v\n", key, bg.errMsg))
+					err := task.TaskFn()
+					if err != nil {
+						bg.handleDisplay(err.Error(), false)
+					}
 					if bg.storage != "" && len(taskToBeRunImmediately) == 0 {
 						bg.removeTask(key)
 					}
